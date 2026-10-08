@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>復古街機棒球：打者對決模擬器 (Retro Batter Showdown)</title>
+  
+  <!-- Web fonts & Tailwind CDN -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --crt-glow: rgba(0, 240, 255, 0.25);
+      --neon-green: #39ff14;
+      --neon-yellow: #ffe600;
+      --neon-cyan: #00f0ff;
+      --neon-red: #ff3344;
+      --neon-pink: #ff007f;
+      --pixel-amber: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: #030712;
+      color: #f1f5f9;
+      font-family: 'Noto Sans TC', monospace;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    .font-arcade {
+      font-family: 'Press Start 2P', monospace;
+    }
+
+    /* Arcade CRT monitor casing */
+    .crt-monitor {
+      position: relative;
+      background: radial-gradient(circle at 50% 40%, #0d1b2a 0%, #030712 100%);
+      border: 3px solid #334155;
+      box-shadow: 0 0 35px var(--crt-glow), inset 0 0 50px rgba(0, 0, 0, 0.95);
+      border-radius: 14px;
+    }
+
+    /* CRT subtle horizontal scanline effect */
+    .crt-monitor::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.28) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 25;
+      opacity: 0.7;
+      border-radius: 12px;
+    }
+
+    /* Arcade button styles */
+    .btn-arcade {
+      font-family: 'Press Start 2P', monospace;
+      text-transform: uppercase;
+      box-shadow: 0 4px 0 #0f172a;
+      transition: all 0.08s ease;
+    }
+    .btn-arcade:active:not(:disabled) {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #0f172a;
+    }
+
+    .btn-toggle {
+      border: 2px solid #334155;
+      background: #0f172a;
+      color: #94a3b8;
+      transition: all 0.15s ease;
+    }
+    .btn-toggle:hover:not(:disabled) {
+      border-color: #64748b;
+      color: #e2e8f0;
+    }
+    .btn-toggle.active {
+      border-color: var(--neon-cyan);
+      background: #083344;
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+    }
+
+    /* 9-zone tactile grid buttons */
+    .zone-cell {
+      aspect-ratio: 1 / 1;
+      border: 1px solid #334155;
+      background: rgba(15, 23, 42, 0.85);
+      color: #64748b;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.12s ease;
+    }
+    .zone-cell:hover:not(:disabled) {
+      background: rgba(56, 189, 248, 0.2);
+      color: #e2e8f0;
+    }
+    .zone-cell.active {
+      background: rgba(0, 240, 255, 0.6);
+      border: 2px solid #00f0ff;
+      color: #ffffff;
+      box-shadow: 0 0 14px #00f0ff;
+    }
+
+    /* Diamond base geometry */
+    .base-diamond {
+      width: 13px;
+      height: 13px;
+      transform: rotate(45deg);
+      border: 2px solid #475569;
+      background: #0f172a;
+      transition: all 0.25s ease;
+    }
+    .base-diamond.occupied {
+      background: var(--neon-yellow);
+      border-color: #f59e0b;
+      box-shadow: 0 0 10px var(--neon-yellow);
+    }
+
+    /* Terminal commentary scrollbar */
+    #battleLog::-webkit-scrollbar {
+      width: 5px;
+    }
+    #battleLog::-webkit-scrollbar-track {
+      background: #050811;
+    }
+    #battleLog::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+
+<body class="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4 text-xs sm:text-sm">
+
+  <main class="w-full max-w-4xl crt-monitor p-3 sm:p-5 flex flex-col gap-3 my-auto shadow-2xl">
+    
+    <!-- Top Scoreboard: B-S-O Lamps, Bases, Runs, Inning -->
+    <header class="bg-black/85 border-2 border-slate-700 rounded-lg p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-3 shadow-inner">
+      <!-- Batter Archetype Indicator -->
+      <div class="flex items-center gap-2.5">
+        <div class="px-2 py-1 bg-cyan-950 border border-cyan-400 rounded text-cyan-300 font-arcade text-[10px] tracking-wider">
+          3-OUT CHALLENGE
+        </div>
+        <div>
+          <span class="text-slate-400 text-xs">打者：</span>
+          <span id="playerRoleBadge" class="text-amber-400 font-bold text-xs sm:text-sm">重砲巨砲</span>
+        </div>
+      </div>
+
+      <!-- B-S-O Counter Lamps -->
+      <div class="flex items-center gap-4 text-xs font-arcade">
+        <!-- Balls -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-green-400 font-bold">B</span>
+          <div class="flex gap-1" id="ballsDisplay">
+            <span class="w-3 h-3 rounded-full border border-green-600 bg-slate-900"></span>
+            <span class="w-3 h-3 rounded-full border border-green-600 bg-slate-900"></span>
+            <span class="w-3 h-3 rounded-full border border-green-600 bg-slate-900"></span>
+          </div>
+        </div>
+        <!-- Strikes -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-yellow-400 font-bold">S</span>
+          <div class="flex gap-1" id="strikesDisplay">
+            <span class="w-3 h-3 rounded-full border border-yellow-600 bg-slate-900"></span>
+            <span class="w-3 h-3 rounded-full border border-yellow-600 bg-slate-900"></span>
+          </div>
+        </div>
+        <!-- Outs -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-red-500 font-bold">O</span>
+          <div class="flex gap-1" id="outsDisplay">
+            <span class="w-3 h-3 rounded-full border border-red-600 bg-slate-900"></span>
+            <span class="w-3 h-3 rounded-full border border-red-600 bg-slate-900"></span>
+            <span class="w-3 h-3 rounded-full border border-red-600 bg-slate-900"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mini Infield Diamond (1B, 2B, 3B, Home) -->
+      <div class="relative w-12 h-12 flex items-center justify-center">
+        <!-- 2nd Base -->
+        <div id="base2" class="base-diamond absolute top-0.5 left-[17px]"></div>
+        <!-- 3rd Base -->
+        <div id="base3" class="base-diamond absolute top-[17px] left-0.5"></div>
+        <!-- 1st Base -->
+        <div id="base1" class="base-diamond absolute top-[17px] right-0.5"></div>
+        <!-- Home Plate Marker -->
+        <div class="w-2.5 h-2.5 bg-slate-500 absolute bottom-0.5 left-[18px] transform rotate-45"></div>
+      </div>
+    </header>
+
+    <!-- Real-time Career Stats Banner -->
+    <div class="grid grid-cols-5 gap-2 bg-slate-900/90 border border-slate-700 p-2 rounded text-center font-arcade text-[10px] sm:text-xs">
+      <div class="border-r border-slate-800 pr-1">
+        <p class="text-slate-400 text-[9px]">得分 RUNS</p>
+        <p id="statScore" class="text-emerald-400 text-sm sm:text-base mt-0.5 font-bold">0</p>
+      </div>
+      <div class="border-r border-slate-800 pr-1">
+        <p class="text-slate-400 text-[9px]">安打 HITS</p>
+        <p id="statHits" class="text-cyan-400 text-sm sm:text-base mt-0.5 font-bold">0</p>
+      </div>
+      <div class="border-r border-slate-800 pr-1">
+        <p class="text-slate-400 text-[9px]">全壘打 HR</p>
+        <p id="statHR" class="text-pink-400 text-sm sm:text-base mt-0.5 font-bold">0</p>
+      </div>
+      <div class="border-r border-slate-800 pr-1">
+        <p class="text-slate-400 text-[9px]">打率 AVG</p>
+        <p id="statAVG" class="text-amber-400 text-sm sm:text-base mt-0.5 font-bold">.000</p>
+      </div>
+      <div>
+        <p class="text-slate-400 text-[9px]">長打率 SLG</p>
+        <p id="statSLG" class="text-indigo-400 text-sm sm:text-base mt-0.5 font-bold">.000</p>
+      </div>
+    </div>
+
+    <!-- Canvas Animation Arena (Responsive 640x330 internal pixel canvas) -->
+    <div class="relative w-full overflow-hidden rounded-lg border-2 border-slate-700 bg-slate-950 flex justify-center items-center">
+      <canvas id="pitchCanvas" width="640" height="330" class="w-full h-auto block aspect-[64/33] max-h-[350px]"></canvas>
+      
+      <!-- Sound Switch Button -->
+      <button id="soundToggleBtn" class="absolute top-2 right-2 bg-black/70 hover:bg-black text-xs px-2.5 py-1 rounded text-cyan-300 border border-cyan-800 z-30 transition">
+        🔊 音效: 開
+      </button>
+    </div>
+
+    <!-- Commentary / Battle Log -->
+    <div class="bg-black border border-slate-700 rounded-lg p-2.5 font-mono text-xs text-green-400 shadow-inner">
+      <div class="flex items-center justify-between pb-1 mb-1 border-b border-green-950 text-[10px] text-green-500 font-arcade">
+        <span>⚡ 現場實況 (PLAY-BY-PLAY)</span>
+        <span id="pitcherTypeLabel" class="text-yellow-400">投手：火球三振王 (速球型)</span>
+      </div>
+      <div id="battleLog" class="h-14 sm:h-16 overflow-y-auto space-y-1 text-slate-300 text-xs leading-relaxed">
+        <p class="text-green-400">> 挑戰開始！累積滿 3 個出局即結算成績。請預測球種、鎖定好球帶九宮格並揮棒！</p>
+      </div>
+    </div>
+
+    <!-- Strategy Console (Step 1, 2, 3) -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-900/90 border border-slate-700 p-3 rounded-lg">
+      
+      <!-- Step 1: Predict Pitch (4 cols) -->
+      <div class="md:col-span-4 flex flex-col gap-1.5">
+        <label class="text-cyan-400 text-xs font-bold flex items-center gap-1.5">
+          <span class="w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400 flex items-center justify-center text-[10px]">1</span>
+          預測球種 (PITCH TYPE)
+        </label>
+        <div class="grid grid-cols-2 gap-1.5" id="pitchChoiceGroup">
+          <button type="button" class="btn-toggle active text-xs py-2 px-1 rounded text-center" data-pitch="four-seam">
+            <span class="block font-bold">四縫線速球</span>
+            <span class="text-[9px] opacity-75">150km/h 直衝</span>
+          </button>
+          <button type="button" class="btn-toggle text-xs py-2 px-1 rounded text-center" data-pitch="slider">
+            <span class="block font-bold">滑球 (Slider)</span>
+            <span class="text-[9px] opacity-75">銳角橫移</span>
+          </button>
+          <button type="button" class="btn-toggle text-xs py-2 px-1 rounded text-center" data-pitch="curve">
+            <span class="block font-bold">曲球 (Curve)</span>
+            <span class="text-[9px] opacity-75">大幅垂直墜落</span>
+          </button>
+          <button type="button" class="btn-toggle text-xs py-2 px-1 rounded text-center" data-pitch="splitter">
+            <span class="block font-bold">指叉球 (Fork)</span>
+            <span class="text-[9px] opacity-75">進壘瞬間下沉</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Aim Zone (4 cols) -->
+      <div class="md:col-span-4 flex flex-col items-center gap-1.5">
+        <label class="text-cyan-400 text-xs font-bold flex items-center gap-1.5 w-full">
+          <span class="w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400 flex items-center justify-center text-[10px]">2</span>
+          瞄準好球帶 (STRIKE ZONE)
+        </label>
+        <div class="grid grid-cols-3 gap-1.5 w-full max-w-[190px] p-1.5 bg-black/60 border border-slate-700 rounded" id="zoneGrid">
+          <button type="button" class="zone-cell rounded" data-zone="1">1</button>
+          <button type="button" class="zone-cell rounded" data-zone="2">2</button>
+          <button type="button" class="zone-cell rounded" data-zone="3">3</button>
+          <button type="button" class="zone-cell rounded" data-zone="4">4</button>
+          <button type="button" class="zone-cell active rounded" data-zone="5">5</button>
+          <button type="button" class="zone-cell rounded" data-zone="6">6</button>
+          <button type="button" class="zone-cell rounded" data-zone="7">7</button>
+          <button type="button" class="zone-cell rounded" data-zone="8">8</button>
+          <button type="button" class="zone-cell rounded" data-zone="9">9</button>
+        </div>
+        <span class="text-[10px] text-slate-400">目前瞄準：<strong id="selectedZoneName" class="text-amber-300">5 (紅中甜區)</strong></span>
+      </div>
+
+      <!-- Step 3: Swing Approach & Launch (4 cols) -->
+      <div class="md:col-span-4 flex flex-col justify-between gap-2">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-cyan-400 text-xs font-bold flex items-center gap-1.5">
+            <span class="w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400 flex items-center justify-center text-[10px]">3</span>
+            出棒策略 (APPROACH)
+          </label>
+          <div class="grid grid-cols-3 gap-1" id="approachGroup">
+            <button type="button" class="btn-toggle active text-[11px] py-1.5 rounded text-center" data-approach="power">
+              <span class="font-bold">強拉</span>
+              <span class="block text-[8px] opacity-75">拼全壘打</span>
+            </button>
+            <button type="button" class="btn-toggle text-[11px] py-1.5 rounded text-center" data-approach="contact">
+              <span class="font-bold">巧打</span>
+              <span class="block text-[8px] opacity-75">穿越安打</span>
+            </button>
+            <button type="button" class="btn-toggle text-[11px] py-1.5 rounded text-center" data-approach="take">
+              <span class="font-bold">看球</span>
+              <span class="block text-[8px] opacity-75">選四壞保送</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Big Launch Trigger Button -->
+        <button id="lockInBtn" class="btn-arcade w-full py-3.5 bg-gradient-to-r from-red-600 via-pink-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-arcade text-xs tracking-wider rounded border border-yellow-300 shadow-lg cursor-pointer">
+          🔥 鎖定出棒 (SWING!)
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Batter Archetype Select Modal Dialog -->
+  <div id="batterSelectModal" class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+    <div class="crt-monitor max-w-xl w-full p-4 sm:p-6 bg-slate-900 text-center flex flex-col gap-4 border-2 border-cyan-500">
+      <h2 class="font-arcade text-base sm:text-lg text-amber-400 tracking-wider">
+        ⚾ 選擇你的挑戰打者 ⚾
+      </h2>
+      <p class="text-xs text-slate-300">3 出局生存模式：在累積 3 個出局前，締造最高得分與安打成就！</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 my-2 text-left">
+        <!-- Slugger Card -->
+        <div class="batter-card cursor-pointer p-3 bg-slate-800/90 hover:bg-slate-700 border-2 border-red-500/70 hover:border-red-400 rounded-lg transition" data-char="slugger">
+          <div class="text-center text-2xl mb-1">💥</div>
+          <h3 class="font-bold text-red-400 text-xs text-center font-arcade">重砲巨砲</h3>
+          <p class="text-[10px] text-slate-300 mt-1">力量：★★★★★<br>安打：★★★☆☆<br>選球：★★☆☆☆</p>
+          <p class="text-[9px] text-amber-300 mt-2">特性：球種與落點完全咬中時，極高機率炸裂全壘打！猜錯揮空率較高。</p>
+        </div>
+
+        <!-- Contact Card -->
+        <div class="batter-card cursor-pointer p-3 bg-slate-800/90 hover:bg-slate-700 border-2 border-green-500/70 hover:border-green-400 rounded-lg transition" data-char="contact">
+          <div class="text-center text-2xl mb-1">🎯</div>
+          <h3 class="font-bold text-green-400 text-xs text-center font-arcade">選球核彈頭</h3>
+          <p class="text-[10px] text-slate-300 mt-1">力量：★★☆☆☆<br>安打：★★★★☆<br>選球：★★★★★</p>
+          <p class="text-[9px] text-amber-300 mt-2">特性：看球時洞悉壞球率高，揮擊時極容易擦棒界外纏鬥或巧打上一壘。</p>
+        </div>
+
+        <!-- All-Around Card -->
+        <div class="batter-card cursor-pointer p-3 bg-slate-800/90 hover:bg-slate-700 border-2 border-cyan-500/70 hover:border-cyan-400 rounded-lg transition" data-char="allaround">
+          <div class="text-center text-2xl mb-1">⚖️</div>
+          <h3 class="font-bold text-cyan-400 text-xs text-center font-arcade">五拍平衡手</h3>
+          <p class="text-[10px] text-slate-300 mt-1">力量：★★★☆☆<br>安打：★★★★☆<br>選球：★★★☆☆</p>
+          <p class="text-[9px] text-amber-300 mt-2">特性：全方位平衡，即便球種猜錯，只要九宮格落點吻合仍有穩固擊球率。</p>
+        </div>
+      </div>
+
+      <button id="startGameBtn" class="btn-arcade py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-arcade text-xs rounded border border-cyan-300 shadow">
+        開始對決 (START GAME)
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Over Settlement Summary Modal -->
+  <div id="gameOverModal" class="hidden fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-3">
+    <div class="crt-monitor max-w-md w-full p-6 bg-slate-900 text-center flex flex-col gap-4 border-2 border-red-500 shadow-2xl">
+      <h2 class="font-arcade text-lg text-red-500 animate-pulse">GAME OVER</h2>
+      <p class="text-xs text-slate-300">累積 3 出局！挑戰結算完成：</p>
+
+      <div class="bg-black/85 border border-slate-700 rounded-lg p-3.5 font-arcade text-xs text-left space-y-2 text-slate-200">
+        <div class="flex justify-between"><span>得分 RUNS:</span><span id="finalScore" class="text-green-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span>安打 HITS:</span><span id="finalHits" class="text-cyan-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span>全壘打 HR:</span><span id="finalHR" class="text-pink-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span>保送 BB:</span><span id="finalWalks" class="text-emerald-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span>三振 SO:</span><span id="finalSO" class="text-red-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span>打擊率 AVG:</span><span id="finalAVG" class="text-amber-400 font-bold">.000</span></div>
+        <div class="flex justify-between"><span>長打率 SLG:</span><span id="finalSLG" class="text-indigo-400 font-bold">.000</span></div>
+        <div class="border-t border-slate-800 pt-2 flex justify-between items-center text-sm">
+          <span>街機評級 RANK:</span><span id="finalRank" class="text-xl text-yellow-300 font-bold">B</span>
+        </div>
+      </div>
+
+      <button id="restartBtn" class="btn-arcade py-3 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white font-arcade text-xs rounded border border-green-300 shadow">
+        🔄 再次挑戰 (PLAY AGAIN)
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /* Pure Web Audio API Sound Synthesizer (No external audio files required) */
+    class RetroSoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playWhoosh() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.35);
+          gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.35);
+        } catch(e) {}
+      }
+
+      playBatHit() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          // Transient high-pitch wooden crack
+          const osc1 = this.ctx.createOscillator();
+          const gain1 = this.ctx.createGain();
+          osc1.type = 'triangle';
+          osc1.frequency.setValueAtTime(1020, now);
+          osc1.frequency.exponentialRampToValueAtTime(180, now + 0.16);
+          gain1.gain.setValueAtTime(0.8, now);
+          gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+          osc1.connect(gain1);
+          gain1.connect(this.ctx.destination);
+          osc1.start();
+          osc1.stop(now + 0.16);
+
+          // Deep body pop
+          const osc2 = this.ctx.createOscillator();
+          const gain2 = this.ctx.createGain();
+          osc2.type = 'square';
+          osc2.frequency.setValueAtTime(190, now);
+          osc2.frequency.exponentialRampToValueAtTime(45, now + 0.22);
+          gain2.gain.setValueAtTime(0.5, now);
+          gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+          osc2.connect(gain2);
+          gain2.connect(this.ctx.destination);
+          osc2.start();
+          osc2.stop(now + 0.22);
+        } catch(e) {}
+      }
+
+      playCatchMitt() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(130, now);
+          osc.frequency.exponentialRampToValueAtTime(35, now + 0.12);
+          gain.gain.setValueAtTime(0.45, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(now + 0.12);
+        } catch(e) {}
+      }
+
+      playStrikeout() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(260, now);
+          osc.frequency.setValueAtTime(160, now + 0.16);
+          gain.gain.setValueAtTime(0.35, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(now + 0.38);
+        } catch(e) {}
+      }
+
+      playHomeRunFanfare() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const notes = [261.6, 329.6, 392.0, 523.2, 659.2]; // C4, E4, G4, C5, E5
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const start = this.ctx.currentTime + idx * 0.1;
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, start);
+            gain.gain.setValueAtTime(0.22, start);
+            gain.gain.exponentialRampToValueAtTime(0.01, start + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.22);
+          });
+        } catch(e) {}
+      }
+
+      playClick() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(620, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.05);
+        } catch(e) {}
+      }
+    }
+
+    const sound = new RetroSoundEngine();
+
+    const GAME = {
+      selectedBatter: 'slugger', // 'slugger', 'contact', 'allaround'
+      predictedPitch: 'four-seam',
+      aimedZone: 5,
+      approach: 'power',
+
+      // 3-Out Challenge tracking
+      outs: 0,
+      strikes: 0,
+      balls: 0,
+      score: 0,
+      hits: 0,
+      homeruns: 0,
+      walks: 0,
+      strikeouts: 0,
+      totalBases: 0,
+      plateAppearances: 0,
+      atBats: 0,
+      bases: [false, false, false], // [1B, 2B, 3B]
+
+      isPitching: false,
+      isGameOver: false,
+      pitcherArchetype: 'fireball' // 'fireball' or 'crafty'
+    };
+
+    const ZONE_NAMES = {
+      1: "1 (內角高)", 2: "2 (中路高)", 3: "3 (外角高)",
+      4: "4 (內角中)", 5: "5 (紅中甜區)", 6: "6 (外角中)",
+      7: "7 (內角低)", 8: "8 (中路低)", 9: "9 (外角低)"
+    };
+
+    const PITCH_CONFIG = {
+      'four-seam': { name: '四縫線速球', minSpeed: 149, maxSpeed: 158 },
+      'slider': { name: '滑球', minSpeed: 133, maxSpeed: 141 },
+      'curve': { name: '曲球', minSpeed: 118, maxSpeed: 127 },
+      'splitter': { name: '指叉球', minSpeed: 136, maxSpeed: 144 }
+    };
+
+    const canvas = document.getElementById('pitchCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Dynamic particles & floating HUD text
+    let particles = [];
+    let floatingTexts = [];
+
+    // Ball Animation parameters
+    let ballAnim = {
+      active: false,
+      progress: 0,
+      startX: 320,
+      startY: 135,
+      endX: 320,
+      endY: 215,
+      currentX: 320,
+      currentY: 135,
+      pitchType: 'four-seam',
+      resolutionCallback: null
+    };
+
+    let pitcherFrame = 0; // 0: windup, 1: cocked, 2: release
+    let batterSwingFrame = 0; // 0: ready stance, 1: contact swing, 2: follow-through
+
+    function getZonePixelCoords(zoneId) {
+      const boxW = 84;
+      const boxH = 84;
+      const startX = 320 - boxW / 2;
+      const startY = 175;
+      const cellW = boxW / 3;
+      const cellH = boxH / 3;
+
+      // 1-9 Strike Zones
+      if (zoneId >= 1 && zoneId <= 9) {
+        const idx = zoneId - 1;
+        const col = idx % 3;
+        const row = Math.floor(idx / 3);
+        return {
+          x: startX + col * cellW + cellW / 2,
+          y: startY + row * cellH + cellH / 2,
+          isStrike: true
+        };
+      }
+
+      // Ball / Waste Zones (10: high, 11: low, 12: inside, 13: outside)
+      switch(zoneId) {
+        case 10: return { x: 320, y: startY - 26, isStrike: false };
+        case 11: return { x: 320, y: startY + boxH + 26, isStrike: false };
+        case 12: return { x: startX - 26, y: startY + boxH / 2, isStrike: false };
+        case 13: return { x: startX + boxW + 26, y: startY + boxH / 2, isStrike: false };
+        default: return { x: 320, y: 217, isStrike: true };
+      }
+    }
+
+    function renderScene() {
+      // Background Sky & Stadium
+      ctx.fillStyle = '#061325';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Distant crowd & outfield fence
+      ctx.fillStyle = '#0f243d';
+      ctx.fillRect(0, 70, canvas.width, 35);
+      for (let i = 15; i < canvas.width; i += 30) {
+        ctx.fillStyle = (i % 60 === 0) ? '#fef08a' : '#38bdf8';
+        ctx.fillRect(i, 80, 4, 4);
+      }
+
+      // Outfield Wall
+      ctx.fillStyle = '#0369a1';
+      ctx.fillRect(0, 105, canvas.width, 18);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(0, 104, canvas.width, 2);
+
+      // Infield Grass & Dirt Dirt Mound
+      ctx.fillStyle = '#14532d';
+      ctx.fillRect(0, 122, canvas.width, canvas.height - 122);
+
+      // Clay Pitcher Mound
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.ellipse(320, 142, 50, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Home plate clay arc
+      ctx.fillStyle = '#92400e';
+      ctx.beginPath();
+      ctx.ellipse(320, 275, 130, 45, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Home Plate (White 5-sided polygon)
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(300, 265);
+      ctx.lineTo(340, 265);
+      ctx.lineTo(340, 275);
+      ctx.lineTo(320, 290);
+      ctx.lineTo(300, 275);
+      ctx.closePath();
+      ctx.fill();
+
+      // Batter Box Chalk Lines
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(200, 240, 65, 55); // Left Batter Box (player)
+      ctx.strokeRect(375, 240, 65, 55); // Right Batter Box
+
+      // Draw Retro Pitcher Sprite on mound
+      drawPitcher(320, 135);
+
+      // Draw 9-Grid Strike Zone in Front of Catcher
+      drawStrikeZoneBox();
+
+      // Draw Batter Sprite
+      drawBatter(230, 230);
+
+      // Draw Animated Pitch Ball if in flight
+      if (ballAnim.active) {
+        drawPitchBall();
+      }
+
+      // Render Particles and Floating Text overlays
+      renderParticles();
+      renderFloatingTexts();
+    }
+
+    function drawPitcher(x, y) {
+      // Shadow
+      ctx.fillStyle = '#3f1f0a';
+      ctx.fillRect(x - 12, y + 2, 24, 6);
+
+      // Uniform jersey
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 6, y - 22, 12, 16);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(x - 4, y - 20, 8, 14);
+
+      // Head & Cap
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - 4, y - 30, 8, 8);
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(x - 6, y - 33, 12, 5);
+
+      // Arms animation state
+      ctx.fillStyle = '#fbbf24';
+      if (pitcherFrame === 0) {
+        ctx.fillRect(x - 8, y - 32, 4, 10);
+        ctx.fillRect(x + 4, y - 32, 4, 10);
+      } else if (pitcherFrame === 1) {
+        ctx.fillRect(x + 6, y - 28, 8, 4);
+      } else {
+        ctx.fillRect(x - 12, y - 14, 8, 4);
+      }
+
+      // Legs
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(x - 5, y - 6, 4, 8);
+      ctx.fillRect(x + 1, y - 6, 4, 8);
+    }
+
+    function drawBatter(x, y) {
+      // Shadow
+      ctx.fillStyle = '#3f1f0a';
+      ctx.fillRect(x - 10, y + 26, 20, 6);
+
+      // Legs
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(x - 6, y + 10, 5, 16);
+      ctx.fillRect(x + 2, y + 10, 5, 16);
+
+      // Body / Red Jersey
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(x - 8, y - 10, 16, 20);
+
+      // Helmet & Face
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - 4, y - 20, 8, 8);
+      ctx.fillStyle = '#991b1b';
+      ctx.fillRect(x - 6, y - 24, 12, 6);
+
+      // Bat representation
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (batterSwingFrame === 0) {
+        // Ready stance
+        ctx.moveTo(x - 2, y - 10);
+        ctx.lineTo(x - 14, y - 32);
+      } else if (batterSwingFrame === 1) {
+        // Swing contact
+        ctx.moveTo(x + 6, y - 4);
+        ctx.lineTo(x + 55, y - 2);
+      } else {
+        // Follow-through
+        ctx.moveTo(x + 4, y - 6);
+        ctx.lineTo(x - 12, y - 18);
+      }
+      ctx.stroke();
+    }
+
+    function drawStrikeZoneBox() {
+      const boxW = 84;
+      const boxH = 84;
+      const startX = 320 - boxW / 2;
+      const startY = 175;
+
+      // Glow boundary
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(startX, startY, boxW, boxH);
+
+      // Dividers
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+      ctx.lineWidth = 1;
+      const cellW = boxW / 3;
+      const cellH = boxH / 3;
+
+      for (let c = 1; c < 3; c++) {
+        ctx.beginPath();
+        ctx.moveTo(startX + c * cellW, startY);
+        ctx.lineTo(startX + c * cellW, startY + boxH);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY + c * cellH);
+        ctx.lineTo(startX + boxW, startY + c * cellH);
+        ctx.stroke();
+      }
+
+      // Highlight Aimed Grid cell
+      const zIndex = GAME.aimedZone - 1;
+      const r = Math.floor(zIndex / 3);
+      const col = zIndex % 3;
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+      ctx.fillRect(startX + col * cellW, startY + r * cellH, cellW, cellH);
+
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(startX + col * cellW, startY + r * cellH, cellW, cellH);
+    }
+
+    function drawPitchBall() {
+      const radius = 3 + ballAnim.progress * 13;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(ballAnim.currentX, ballAnim.currentY, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Red stitches
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(ballAnim.currentX, ballAnim.currentY, radius * 0.7, 0.4, Math.PI * 0.8);
+      ctx.stroke();
+    }
+
+    function spawnHitParticles(x, y, count = 25, color = '#facc15') {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 5;
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 1.5,
+          color: color,
+          size: 2 + Math.random() * 4,
+          life: 1.0
+        });
+      }
+    }
+
+    function spawnFloatingText(text, x, y, color = '#ffe600') {
+      floatingTexts.push({
+        text: text,
+        x: x,
+        y: y,
+        color: color,
+        life: 1.0,
+        vy: -1.2
+      });
+    }
+
+    function renderParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life -= 0.025;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+      }
+      ctx.globalAlpha = 1.0;
+    }
+
+    function renderFloatingTexts() {
+      for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        const t = floatingTexts[i];
+        t.y += t.vy;
+        t.life -= 0.018;
+        if (t.life <= 0) {
+          floatingTexts.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.font = '16px "Press Start 2P", monospace';
+        ctx.fillStyle = t.color;
+        ctx.globalAlpha = Math.max(0, t.life);
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000000';
+        ctx.shadowBlur = 6;
+        ctx.fillText(t.text, t.x, t.y);
+        ctx.restore();
+      }
+    }
+
+    let lastTime = performance.now();
+    function animateCanvas(timestamp) {
+      const dt = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+
+      if (ballAnim.active) {
+        ballAnim.progress += dt * 1.7; // ~0.6 sec flight time
+        if (ballAnim.progress >= 1.0) {
+          ballAnim.progress = 1.0;
+          ballAnim.active = false;
+          ballAnim.currentX = ballAnim.endX;
+          ballAnim.currentY = ballAnim.endY;
+
+          if (ballAnim.resolutionCallback) {
+            ballAnim.resolutionCallback();
+            ballAnim.resolutionCallback = null;
+          }
+        } else {
+          const t = ballAnim.progress;
+          let curX = ballAnim.startX + (ballAnim.endX - ballAnim.startX) * t;
+          let curY = ballAnim.startY + (ballAnim.endY - ballAnim.startY) * t;
+
+          // Pitch trajectory curvature
+          if (ballAnim.pitchType === 'slider') {
+            curX += Math.sin(t * Math.PI) * 28;
+          } else if (ballAnim.pitchType === 'curve') {
+            curY -= Math.sin(t * Math.PI) * 22;
+          } else if (ballAnim.pitchType === 'splitter') {
+            if (t > 0.6) {
+              curY += Math.pow((t - 0.6) / 0.4, 2) * 26;
+            }
+          }
+          ballAnim.currentX = curX;
+          ballAnim.currentY = curY;
+        }
+      }
+
+      renderScene();
+      requestAnimationFrame(animateCanvas);
+    }
+    requestAnimationFrame(animateCanvas);
+
+    function generatePitcherDelivery() {
+      const pitchKeys = ['four-seam', 'slider', 'curve', 'splitter'];
+      let chosenPitch = 'four-seam';
+
+      if (GAME.pitcherArchetype === 'fireball') {
+        const roll = Math.random();
+        if (roll < 0.55) chosenPitch = 'four-seam';
+        else if (roll < 0.70) chosenPitch = 'slider';
+        else if (roll < 0.85) chosenPitch = 'curve';
+        else chosenPitch = 'splitter';
+      } else {
+        chosenPitch = pitchKeys[Math.floor(Math.random() * pitchKeys.length)];
+      }
+
+      // Zone generation: 75% in strike zone (1-9), 25% waste/ball zone (10-13)
+      let actualZone = Math.floor(Math.random() * 9) + 1;
+      if (Math.random() < 0.25) {
+        actualZone = 10 + Math.floor(Math.random() * 4);
+      }
+
+      const cfg = PITCH_CONFIG[chosenPitch];
+      const speed = Math.floor(cfg.minSpeed + Math.random() * (cfg.maxSpeed - cfg.minSpeed));
+
+      return {
+        pitchType: chosenPitch,
+        pitchName: cfg.name,
+        speed: speed,
+        zone: actualZone
+      };
+    }
+
+    function resolvePitchOutcome(delivery) {
+      const isPitchStrike = delivery.zone >= 1 && delivery.zone <= 9;
+      const targetCoords = getZonePixelCoords(delivery.zone);
+
+      const isSlugger = GAME.selectedBatter === 'slugger';
+      const isContactEye = GAME.selectedBatter === 'contact';
+      const isAllAround = GAME.selectedBatter === 'allaround';
+
+      const predictedPitchCorrect = (GAME.predictedPitch === delivery.pitchType);
+
+      let zoneDistance = 99;
+      if (isPitchStrike) {
+        const pRow = Math.floor((delivery.zone - 1) / 3);
+        const pCol = (delivery.zone - 1) % 3;
+        const uRow = Math.floor((GAME.aimedZone - 1) / 3);
+        const uCol = (GAME.aimedZone - 1) % 3;
+        zoneDistance = Math.abs(pRow - uRow) + Math.abs(pCol - uCol);
+      }
+
+      // Option A: TAKE (不揮棒)
+      if (GAME.approach === 'take') {
+        batterSwingFrame = 0;
+        if (isPitchStrike) {
+          sound.playCatchMitt();
+          spawnFloatingText("STRIKE!", targetCoords.x, targetCoords.y - 15, '#facc15');
+          addLog(`> 投球進壘！${delivery.speed}km/h ${delivery.pitchName} 精準壓在 ${ZONE_NAMES[delivery.zone]}。打者目送，好球！`, 'text-yellow-400');
+          recordStrike();
+        } else {
+          sound.playClick();
+          spawnFloatingText("BALL!", targetCoords.x, targetCoords.y - 15, '#22c55e');
+          addLog(`> 壞球！${delivery.speed}km/h ${delivery.pitchName} 偏離好球帶。選球精準，不為所動！`, 'text-green-400');
+          recordBall();
+        }
+        return;
+      }
+
+      // Option B: SWING (POWER or CONTACT)
+      batterSwingFrame = 1;
+      setTimeout(() => { batterSwingFrame = 2; }, 180);
+      setTimeout(() => { batterSwingFrame = 0; }, 420);
+
+      // Swung at a pitch outside the zone
+      if (!isPitchStrike) {
+        let whiffChance = isContactEye ? 0.40 : (isSlugger ? 0.85 : 0.65);
+        if (Math.random() < whiffChance) {
+          sound.playCatchMitt();
+          spawnFloatingText("SWING & MISS!", targetCoords.x, targetCoords.y - 15, '#ef4444');
+          addLog(`> 揮棒落空！打者追打了外圍引誘壞球 (${delivery.pitchName})！`, 'text-red-400');
+          recordStrike();
+        } else {
+          sound.playBatHit();
+          spawnHitParticles(targetCoords.x, targetCoords.y, 12, '#94a3b8');
+          spawnFloatingText("FOUL!", targetCoords.x, targetCoords.y - 15, '#cbd5e1');
+          addLog(`> 勉強碰到！引誘球被破壞成界外。`, 'text-slate-300');
+          recordFoul();
+        }
+        return;
+      }
+
+      // Inside Strike Zone Resolution
+      // Perfect match: exact zone and pitch type
+      if (zoneDistance === 0 && predictedPitchCorrect) {
+        sound.playBatHit();
+        spawnHitParticles(targetCoords.x, targetCoords.y, 40, '#f43f5e');
+
+        if (GAME.approach === 'power' && (isSlugger || Math.random() < 0.70)) {
+          sound.playHomeRunFanfare();
+          spawnFloatingText("HOMERUN!!", 320, 160, '#ff007f');
+          addLog(`> 💥 炸裂！！完全咬中 ${delivery.speed}km/h ${delivery.pitchName}！紅不讓直擊看台！`, 'text-pink-400 font-bold');
+          recordHomeRun();
+        } else {
+          spawnFloatingText("HARD HIT! 2B", 320, 170, '#38bdf8');
+          addLog(`> 🚀 紮實強襲！穿越外野防線的深遠長打！`, 'text-cyan-400 font-bold');
+          recordHit(2);
+        }
+        return;
+      }
+
+      // Close match: Zone == 0 delta (wrong pitch) OR Zone == 1 delta (correct pitch)
+      if (zoneDistance === 0 || (zoneDistance === 1 && predictedPitchCorrect)) {
+        sound.playBatHit();
+        spawnHitParticles(targetCoords.x, targetCoords.y, 20, '#38bdf8');
+
+        const hitRoll = Math.random();
+        if (hitRoll < (isContactEye ? 0.75 : 0.55)) {
+          spawnFloatingText("BASE HIT!", 320, 170, '#34d399');
+          addLog(`> ⚾ 漂亮的一壘安打！穿越內野防守！`, 'text-emerald-400');
+          recordHit(1);
+        } else if (hitRoll < 0.85) {
+          spawnFloatingText("FOUL BALL", targetCoords.x, targetCoords.y - 15, '#cbd5e1');
+          addLog(`> 擦棒成界外球！兩造持續纏鬥。`, 'text-slate-300');
+          recordFoul();
+        } else {
+          spawnFloatingText("FLY OUT!", 320, 170, '#f87171');
+          addLog(`> 擊出內野高飛球被接殺！出局！`, 'text-amber-400');
+          recordOut("高飛球接殺");
+        }
+        return;
+      }
+
+      // Off-target (zone distance >= 2 or completely fooled)
+      const whiffRate = isSlugger ? 0.75 : (isContactEye ? 0.40 : 0.60);
+      if (Math.random() < whiffRate) {
+        sound.playCatchMitt();
+        spawnFloatingText("WHIFF!", targetCoords.x, targetCoords.y - 15, '#ef4444');
+        addLog(`> 揮空！猜測落點大幅偏差，打者完全被 ${delivery.speed}km/h ${delivery.pitchName} 愚弄。`, 'text-red-400');
+        recordStrike();
+      } else {
+        if (Math.random() < 0.5) {
+          sound.playBatHit();
+          spawnHitParticles(targetCoords.x, targetCoords.y, 10, '#64748b');
+          spawnFloatingText("FOUL", targetCoords.x, targetCoords.y - 15, '#cbd5e1');
+          addLog(`> 勉強擦到球皮形成界外。`, 'text-slate-300');
+          recordFoul();
+        } else {
+          sound.playBatHit();
+          spawnFloatingText("GROUND OUT!", 320, 170, '#f87171');
+          addLog(`> 軟弱滾地球，內野手輕鬆傳一壘封殺出局！`, 'text-amber-400');
+          recordOut("滾地球刺殺");
+        }
+      }
+    }
+
+    function recordBall() {
+      GAME.balls++;
+      if (GAME.balls >= 4) {
+        GAME.walks++;
+        addLog(`> 📢 四壞球保送！打者選到保送穩健上一壘！`, 'text-green-300 font-bold');
+        advanceBases(1, true);
+        resetCount();
+        GAME.plateAppearances++;
+      }
+      updateHUD();
+    }
+
+    function recordStrike() {
+      GAME.strikes++;
+      if (GAME.strikes >= 3) {
+        GAME.strikeouts++;
+        sound.playStrikeout();
+        addLog(`> ☠️ 三振出局 (STRIKE THREE)！`, 'text-red-500 font-bold');
+        recordOut("三振出局");
+      }
+      updateHUD();
+    }
+
+    function recordFoul() {
+      if (GAME.strikes < 2) {
+        GAME.strikes++;
+      }
+      updateHUD();
+    }
+
+    function recordOut(reason) {
+      GAME.outs++;
+      GAME.plateAppearances++;
+      GAME.atBats++;
+      resetCount();
+
+      if (GAME.outs >= 3) {
+        triggerGameOver();
+      } else {
+        addLog(`> 目前出局數：${GAME.outs} 出局。下一打席準備！`, 'text-orange-400');
+      }
+      updateHUD();
+    }
+
+    function recordHit(basesCount) {
+      GAME.hits++;
+      GAME.totalBases += basesCount;
+      GAME.plateAppearances++;
+      GAME.atBats++;
+      advanceBases(basesCount, false);
+      resetCount();
+      updateHUD();
+    }
+
+    function recordHomeRun() {
+      GAME.hits++;
+      GAME.homeruns++;
+      GAME.totalBases += 4;
+      GAME.plateAppearances++;
+      GAME.atBats++;
+
+      let runsScored = 1;
+      for (let i = 0; i < 3; i++) {
+        if (GAME.bases[i]) {
+          runsScored++;
+          GAME.bases[i] = false;
+        }
+      }
+      GAME.score += runsScored;
+      addLog(`> 🎇 全壘打得分！進帳 ${runsScored} 分！`, 'text-yellow-300 font-bold');
+
+      resetCount();
+      updateHUD();
+    }
+
+    function advanceBases(hitType, isWalk = false) {
+      let runsBefore = GAME.score;
+      if (isWalk) {
+        if (GAME.bases[0]) {
+          if (GAME.bases[1]) {
+            if (GAME.bases[2]) {
+              GAME.score++;
+            }
+            GAME.bases[2] = true;
+          }
+          GAME.bases[1] = true;
+        }
+        GAME.bases[0] = true;
+      } else {
+        let newBases = [false, false, false];
+        for (let b = 2; b >= 0; b--) {
+          if (GAME.bases[b]) {
+            let dest = b + hitType;
+            if (dest >= 3) {
+              GAME.score++;
+            } else {
+              newBases[dest] = true;
+            }
+          }
+        }
+        if (hitType === 1) newBases[0] = true;
+        else if (hitType === 2) newBases[1] = true;
+        else if (hitType === 3) newBases[2] = true;
+
+        GAME.bases = newBases;
+      }
+
+      if (GAME.score > runsBefore) {
+        addLog(`> 跑者回本壘得分！總得分累計：${GAME.score} 分！`, 'text-yellow-400 font-bold');
+      }
+    }
+
+    function resetCount() {
+      GAME.balls = 0;
+      GAME.strikes = 0;
+    }
+
+    function updateHUD() {
+      // Balls
+      const bDots = document.getElementById('ballsDisplay').children;
+      for (let i = 0; i < 3; i++) {
+        bDots[i].className = (i < GAME.balls) 
+          ? "w-3 h-3 rounded-full border border-green-400 bg-green-500 shadow-[0_0_6px_#22c55e]"
+          : "w-3 h-3 rounded-full border border-green-600 bg-slate-900";
+      }
+
+      // Strikes
+      const sDots = document.getElementById('strikesDisplay').children;
+      for (let i = 0; i < 2; i++) {
+        sDots[i].className = (i < GAME.strikes)
+          ? "w-3 h-3 rounded-full border border-yellow-300 bg-yellow-400 shadow-[0_0_6px_#facc15]"
+          : "w-3 h-3 rounded-full border border-yellow-600 bg-slate-900";
+      }
+
+      // Outs
+      const oDots = document.getElementById('outsDisplay').children;
+      for (let i = 0; i < 3; i++) {
+        oDots[i].className = (i < GAME.outs)
+          ? "w-3 h-3 rounded-full border border-red-400 bg-red-600 shadow-[0_0_8px_#ef4444]"
+          : "w-3 h-3 rounded-full border border-red-600 bg-slate-900";
+      }
+
+      // Bases
+      document.getElementById('base1').className = "base-diamond absolute top-[17px] right-0.5" + (GAME.bases[0] ? " occupied" : "");
+      document.getElementById('base2').className = "base-diamond absolute top-0.5 left-[17px]" + (GAME.bases[1] ? " occupied" : "");
+      document.getElementById('base3').className = "base-diamond absolute top-[17px] left-0.5" + (GAME.bases[2] ? " occupied" : "");
+
+      // Stats
+      document.getElementById('statScore').innerText = GAME.score;
+      document.getElementById('statHits').innerText = GAME.hits;
+      document.getElementById('statHR').innerText = GAME.homeruns;
+
+      const avg = GAME.atBats > 0 ? (GAME.hits / GAME.atBats).toFixed(3).replace(/^0/, '') : '.000';
+      const slg = GAME.atBats > 0 ? (GAME.totalBases / GAME.atBats).toFixed(3).replace(/^0/, '') : '.000';
+      document.getElementById('statAVG').innerText = avg;
+      document.getElementById('statSLG').innerText = slg;
+    }
+
+    function addLog(msg, colorClass = 'text-slate-300') {
+      const logBox = document.getElementById('battleLog');
+      const p = document.createElement('p');
+      p.className = colorClass;
+      p.innerHTML = msg;
+      logBox.appendChild(p);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function triggerGameOver() {
+      GAME.isGameOver = true;
+      const avgVal = GAME.atBats > 0 ? (GAME.hits / GAME.atBats) : 0;
+      const slgVal = GAME.atBats > 0 ? (GAME.totalBases / GAME.atBats) : 0;
+      const formattedAvg = avgVal.toFixed(3).replace(/^0/, '');
+      const formattedSlg = slgVal.toFixed(3).replace(/^0/, '');
+
+      document.getElementById('finalScore').innerText = GAME.score;
+      document.getElementById('finalHits').innerText = GAME.hits;
+      document.getElementById('finalHR').innerText = GAME.homeruns;
+      document.getElementById('finalWalks').innerText = GAME.walks;
+      document.getElementById('finalSO').innerText = GAME.strikeouts;
+      document.getElementById('finalAVG').innerText = formattedAvg;
+      document.getElementById('finalSLG').innerText = formattedSlg;
+
+      // Arcade ranking calculation
+      let rank = 'D';
+      const powerScore = GAME.score * 3 + GAME.hits * 2 + GAME.homeruns * 5;
+      if (powerScore >= 25 || (GAME.homeruns >= 3 && avgVal >= 0.35)) rank = 'S+';
+      else if (powerScore >= 18 || avgVal >= 0.40) rank = 'S';
+      else if (powerScore >= 12 || avgVal >= 0.30) rank = 'A';
+      else if (powerScore >= 6 || avgVal >= 0.20) rank = 'B';
+      else if (powerScore >= 2) rank = 'C';
+
+      const rankElem = document.getElementById('finalRank');
+      rankElem.innerText = rank;
+      if (rank.startsWith('S')) rankElem.className = 'text-2xl text-pink-400 font-bold animate-bounce';
+      else if (rank === 'A') rankElem.className = 'text-2xl text-amber-300 font-bold';
+      else rankElem.className = 'text-xl text-yellow-300 font-bold';
+
+      setTimeout(() => {
+        document.getElementById('gameOverModal').classList.remove('hidden');
+      }, 700);
+    }
+
+    // Step 1: Pitch type buttons
+    document.querySelectorAll('#pitchChoiceGroup button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sound.init();
+        sound.playClick();
+        document.querySelectorAll('#pitchChoiceGroup button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        GAME.predictedPitch = btn.getAttribute('data-pitch');
+      });
+    });
+
+    // Step 2: 9-Zone Grid buttons
+    document.querySelectorAll('#zoneGrid button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sound.init();
+        sound.playClick();
+        document.querySelectorAll('#zoneGrid button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        GAME.aimedZone = parseInt(btn.getAttribute('data-zone'), 10);
+        document.getElementById('selectedZoneName').innerText = ZONE_NAMES[GAME.aimedZone];
+      });
+    });
+
+    // Step 3: Swing Approach buttons
+    document.querySelectorAll('#approachGroup button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sound.init();
+        sound.playClick();
+        document.querySelectorAll('#approachGroup button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        GAME.approach = btn.getAttribute('data-approach');
+      });
+    });
+
+    // Big Lock-In & Swing Action Button
+    document.getElementById('lockInBtn').addEventListener('click', () => {
+      sound.init();
+      if (GAME.isPitching || GAME.isGameOver) return;
+      GAME.isPitching = true;
+      const lockBtn = document.getElementById('lockInBtn');
+      lockBtn.disabled = true;
+      lockBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      const delivery = generatePitcherDelivery();
+      const targetCoords = getZonePixelCoords(delivery.zone);
+
+      // Pitcher windup motion
+      pitcherFrame = 1;
+      setTimeout(() => {
+        pitcherFrame = 2;
+        sound.playWhoosh();
+
+        ballAnim.active = true;
+        ballAnim.progress = 0;
+        ballAnim.startX = 320;
+        ballAnim.startY = 135;
+        ballAnim.endX = targetCoords.x;
+        ballAnim.endY = targetCoords.y;
+        ballAnim.pitchType = delivery.pitchType;
+
+        ballAnim.resolutionCallback = () => {
+          resolvePitchOutcome(delivery);
+          setTimeout(() => {
+            pitcherFrame = 0;
+            GAME.isPitching = false;
+            lockBtn.disabled = false;
+            lockBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          }, 350);
+        };
+      }, 300);
+    });
+
+    // Audio toggle
+    const soundBtn = document.getElementById('soundToggleBtn');
+    soundBtn.addEventListener('click', () => {
+      sound.init();
+      sound.enabled = !sound.enabled;
+      soundBtn.innerText = sound.enabled ? "🔊 音效: 開" : "🔇 音效: 關";
+    });
+
+    // Batter Selection Card selection
+    document.querySelectorAll('.batter-card').forEach(card => {
+      card.addEventListener('click', () => {
+        sound.init();
+        sound.playClick();
+        document.querySelectorAll('.batter-card').forEach(c => c.classList.remove('ring-4', 'ring-cyan-400', 'bg-slate-700'));
+        card.classList.add('ring-4', 'ring-cyan-400', 'bg-slate-700');
+        GAME.selectedBatter = card.getAttribute('data-char');
+      });
+    });
+
+    // Default select slugger
+    document.querySelector('.batter-card[data-char="slugger"]').classList.add('ring-4', 'ring-cyan-400', 'bg-slate-700');
+
+    // Start Game from Modal
+    document.getElementById('startGameBtn').addEventListener('click', () => {
+      sound.init();
+      sound.playClick();
+      const roleNames = {
+        'slugger': '💥 重砲巨砲',
+        'contact': '🎯 選球核彈頭',
+        'allaround': '⚖️ 五拍平衡手'
+      };
+      document.getElementById('playerRoleBadge').innerText = roleNames[GAME.selectedBatter];
+      document.getElementById('batterSelectModal').classList.add('hidden');
+      renderScene();
+      updateHUD();
+    });
+
+    // Restart Challenge Button
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      sound.init();
+      sound.playClick();
+      GAME.outs = 0;
+      GAME.balls = 0;
+      GAME.strikes = 0;
+      GAME.score = 0;
+      GAME.hits = 0;
+      GAME.homeruns = 0;
+      GAME.walks = 0;
+      GAME.strikeouts = 0;
+      GAME.totalBases = 0;
+      GAME.plateAppearances = 0;
+      GAME.atBats = 0;
+      GAME.bases = [false, false, false];
+      GAME.isGameOver = false;
+      GAME.isPitching = false;
+
+      document.getElementById('gameOverModal').classList.add('hidden');
+      document.getElementById('batterSelectModal').classList.remove('hidden');
+      document.getElementById('battleLog').innerHTML = '<p class="text-green-400">> 重新挑戰！請選擇打者特性重新出發。</p>';
+      updateHUD();
+    });
+
+    // Start Web Audio on initial user interaction
+    window.addEventListener('click', () => {
+      sound.init();
+    }, { once: true });
+  </script>
+</body>
+</html>
